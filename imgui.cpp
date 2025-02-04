@@ -1,4 +1,4 @@
-// dear imgui, v1.91.8 WIP
+// dear imgui, v1.91.9 WIP
 // (main code and documentation)
 
 // Help:
@@ -430,6 +430,7 @@ CODE
  When you are not sure about an old symbol or function name, try using the Search/Find function of your IDE to look for comments or references in all imgui files.
  You can read releases logs https://github.com/ocornut/imgui/releases for more details.
 
+ - 2025/02/03 (1.91.9) - removed ImFontConfig::GlyphExtraSpacing option which seems largely obsolete and unused. If you were using this please report it!
  - 2025/01/22 (1.91.8) - removed ImGuiColorEditFlags_AlphaPreview (made value 0): it is now the default behavior.
                          prior to 1.91.8: alpha was made opaque in the preview by default _unless_ using ImGuiColorEditFlags_AlphaPreview. We now display the preview as transparent by default. You can use ImGuiColorEditFlags_AlphaOpaque to use old behavior.
                          the new flags (ImGuiColorEditFlags_AlphaOpaque, ImGuiColorEditFlags_AlphaNoBg + existing ImGuiColorEditFlags_AlphaPreviewHalf) may be combined better and allow finer controls:
@@ -2012,6 +2013,7 @@ const char* ImStreolRange(const char* str, const char* str_end)
 
 const char* ImStrbol(const char* buf_mid_line, const char* buf_begin) // find beginning-of-line
 {
+    IM_ASSERT_PARANOID(buf_mid_line >= buf_begin && buf_mid_line <= buf_begin + strlen(buf_begin));
     while (buf_mid_line > buf_begin && buf_mid_line[-1] != '\n')
         buf_mid_line--;
     return buf_mid_line;
@@ -4440,8 +4442,11 @@ void ImGui::MarkItemEdited(ImGuiID id)
         return;
     if (g.ActiveId == id || g.ActiveId == 0)
     {
+        // FIXME: Can't we fully rely on LastItemData yet?
         g.ActiveIdHasBeenEditedThisFrame = true;
         g.ActiveIdHasBeenEditedBefore = true;
+        if (g.DeactivatedItemData.ID == id)
+            g.DeactivatedItemData.HasBeenEditedBefore = true;
     }
 
     // We accept a MarkItemEdited() on drag and drop targets (see https://github.com/ocornut/imgui/issues/1875#issuecomment-978243343)
@@ -4814,7 +4819,7 @@ ImGuiIO& ImGui::GetIO()
 }
 
 // This variant exists to facilitate backends experimenting with multi-threaded parallel context. (#8069, #6293, #5856)
-ImGuiIO& ImGui::GetIOEx(ImGuiContext* ctx)
+ImGuiIO& ImGui::GetIO(ImGuiContext* ctx)
 {
     IM_ASSERT(ctx != NULL);
     return ctx->IO;
@@ -4824,6 +4829,13 @@ ImGuiPlatformIO& ImGui::GetPlatformIO()
 {
     IM_ASSERT(GImGui != NULL && "No current context. Did you call ImGui::CreateContext() and ImGui::SetCurrentContext()?");
     return GImGui->PlatformIO;
+}
+
+// This variant exists to facilitate backends experimenting with multi-threaded parallel context. (#8069, #6293, #5856)
+ImGuiPlatformIO& ImGui::GetPlatformIO(ImGuiContext* ctx)
+{
+    IM_ASSERT(ctx != NULL);
+    return ctx->PlatformIO;
 }
 
 // Pass this to your backend rendering function! Valid after Render() and until the next call to NewFrame()
@@ -10301,6 +10313,11 @@ void    ImGui::ErrorRecoveryTryToRecoverWindowState(const ImGuiErrorRecoveryStat
         IM_ASSERT_USER_ERROR(0, "Missing EndMultiSelect()");
         EndMultiSelect();
     }
+    if (window->DC.MenuBarAppending) //-V1044
+    {
+        IM_ASSERT_USER_ERROR(0, "Missing EndMenuBar()");
+        EndMenuBar();
+    }
     while (window->DC.TreeDepth > state_in->SizeOfTreeStack) //-V1044
     {
         IM_ASSERT_USER_ERROR(0, "Missing TreePop()");
@@ -13649,7 +13666,7 @@ static void ImGui::NavUpdateWindowing()
 
     // Start CTRL+Tab or Square+L/R window selection
     // (g.ConfigNavWindowingKeyNext/g.ConfigNavWindowingKeyPrev defaults are ImGuiMod_Ctrl|ImGuiKey_Tab and ImGuiMod_Ctrl|ImGuiMod_Shift|ImGuiKey_Tab)
-    const ImGuiID owner_id = ImHashStr("###NavUpdateWindowing");
+    const ImGuiID owner_id = ImHashStr("##NavUpdateWindowing");
     const bool nav_gamepad_active = (io.ConfigFlags & ImGuiConfigFlags_NavEnableGamepad) != 0 && (io.BackendFlags & ImGuiBackendFlags_HasGamepad) != 0;
     const bool nav_keyboard_active = (io.ConfigFlags & ImGuiConfigFlags_NavEnableKeyboard) != 0;
     const bool keyboard_next_window = allow_windowing && g.ConfigNavWindowingKeyNext && Shortcut(g.ConfigNavWindowingKeyNext, ImGuiInputFlags_Repeat | ImGuiInputFlags_RouteAlways, owner_id);
@@ -13849,12 +13866,12 @@ void ImGui::NavUpdateWindowingOverlay()
         return;
 
     if (g.NavWindowingListWindow == NULL)
-        g.NavWindowingListWindow = FindWindowByName("###NavWindowingList");
+        g.NavWindowingListWindow = FindWindowByName("##NavWindowingOverlay");
     const ImGuiViewport* viewport = GetMainViewport();
     SetNextWindowSizeConstraints(ImVec2(viewport->Size.x * 0.20f, viewport->Size.y * 0.20f), ImVec2(FLT_MAX, FLT_MAX));
     SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     PushStyleVar(ImGuiStyleVar_WindowPadding, g.Style.WindowPadding * 2.0f);
-    Begin("###NavWindowingList", NULL, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
+    Begin("##NavWindowingOverlay", NULL, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
     if (g.ContextName[0] != 0)
         SeparatorText(g.ContextName);
     for (int n = g.WindowsFocusOrder.Size - 1; n >= 0; n--)
