@@ -66,3 +66,4 @@ examples/example_sdl2_sdlrenderer/example_sdl2_sdlrenderer
 *.spv
 bin
 bin-int
+Makefile
